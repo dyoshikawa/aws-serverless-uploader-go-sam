@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Sample SAM Template for aws-serverless-uploader
+
+Globals:
+  Function:
+    Timeout: 15
+    Environment:
+      Variables:
+        APP_NAME: APP_NAME
+        REGION: REGION
+        FILE_STORAGE_S3: FILE_STORAGE_S3
+  Api:
+    EndpointConfiguration: REGIONAL
+    Cors:
+      AllowOrigin: "'*'"
+      AllowMethods: "'GET,POST,PUT,PATCH,DELETE,OPTION'"
+      AllowHeaders: "'origin,Accept,Authorization,Content-Type'"
+  SimpleTable:
+    SSESpecification:
+      SSEEnabled: true
+
+Resources:
+  ImagesTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      TableName: AwsServerlessUploaderGoImages
+      PrimaryKey:
+        Name: Name
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+
+  ImagesIndexFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/images/index
+      Handler: main
+      Runtime: go1.x
+      Tracing: Active
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /images
+            Method: GET
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:*"
+              Resource: "*"
+  ImagesIndexFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImagesIndexFunction}
+      RetentionInDays: 14
+
+  ImagesUploadFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/images/store
+      Handler: main
+      Runtime: go1.x
+      Tracing: Active
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /images
+            Method: POST
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:*"
+                - "s3:*"
+              Resource: "*"
+  ImagesUploadFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${ImagesUploadFunction}
+      RetentionInDays: 14
+
+  BatchDestroyFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/batch/destroy
+      Handler: main
+      Runtime: go1.x
+      Tracing: Active
+      Events:
+        ScheduledEvent:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 day)
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - "dynamodb:*"
+                - "s3:*"
+              Resource: "*"
+  BatchDestroyFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BatchDestroyFunction}
+      RetentionInDays: 14
